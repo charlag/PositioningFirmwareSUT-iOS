@@ -6,5 +6,9 @@ target 'PositioningFirmwareSUT' do
   use_frameworks!
 
   # Pods for PositioningFirmwareSUT
+  pod 'Alamofire'
+  pod 'RxSwift'
+  pod 'RxCocoa'
+  pod 'RxAlamofire', '~> 3.0'
 
 end

@@ -7,10 +7,16 @@
 //
 
 import UIKit
+import RxSwift
+import RxCocoa
 
 class ViewController: UIViewController {
     
+    let api: API = APIImpl()
+    
     let canvas = UIImageView()
+    
+    let disposeBag = DisposeBag()
     
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -30,23 +36,43 @@ class ViewController: UIViewController {
         canvas.topAnchor.constraint(equalTo: view.topAnchor, constant: 20).isActive = true
         canvas.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
         canvas.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
-    }
-    
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        drawCanvas()
+        
+        let gestureRecognizer = UITapGestureRecognizer(target: nil, action: nil)
+        canvas.addGestureRecognizer(gestureRecognizer)
+        canvas.isUserInteractionEnabled = true
+        
+        let terrain = api.getTerrain().shareReplayLatestWhileConnected()
+        
+        Observable<Int>.interval(1.0, scheduler: MainScheduler.instance)
+            .flatMap { _ in self.api.getLocation() }
+            .withLatestFrom(terrain) { ($0, $1) }
+            .subscribe(onNext: { (point, terrain) in
+                self.drawCanvas(terrain: terrain, point: point)
+            })
+            .addDisposableTo(disposeBag)
+        
+        gestureRecognizer.rx.event
+            .withLatestFrom(terrain) { ($0, $1) }
+            .flatMap { (recongnizer, terrain) -> Observable<Void> in
+                let location = recongnizer.location(in: self.canvas)
+                let x = round(self.canvas.frame.maxX / location.x)
+                let y = round(self.canvas.frame.maxY / location.y)
+                print("Sending to: \(x) \(y)")
+                return self.api.postLocation(point: Point(x: Int(x),
+                                                          y: Int(y)))
+            }
+            .subscribe()
+            .addDisposableTo(disposeBag)
     }
     
     typealias LineCoordinates = (CGPoint, CGPoint)
     typealias RulerLabel = (CGRect, String)
     typealias RulerPoint = (line: LineCoordinates, label: RulerLabel)
 
-    private func drawCanvas() {
-        let horizontalSize = 10
-        let verticalSize = 20
+    private func drawCanvas(terrain: Terrain, point: Point) {
         
-        let horizontalStep = canvas.frame.maxX / CGFloat(horizontalSize)
-        let xIndicies = 1..<horizontalSize
+        let horizontalStep = canvas.frame.maxX / CGFloat(terrain.sizeX)
+        let xIndicies = 1..<terrain.sizeX
         let horizontalPoints = xIndicies.map { (i: Int) -> RulerPoint in
             let x = CGFloat(i) * horizontalStep
             let lineStart = CGPoint(x: x, y: 0)
@@ -56,8 +82,8 @@ class ViewController: UIViewController {
             return (line: (lineStart, lineEnd), label: (labelFrame, "\(i)"))
         }
         
-        let verticalStep = canvas.frame.maxY / CGFloat(verticalSize)
-        let yIndicies = 1..<verticalSize
+        let verticalStep = canvas.frame.maxY / CGFloat(terrain.sizeY)
+        let yIndicies = 1..<terrain.sizeY
         let verticalPoints = yIndicies.map { i -> RulerPoint in
             let y = CGFloat(i) * verticalStep
             let lineStart = CGPoint(x: 0, y: y)
@@ -75,6 +101,9 @@ class ViewController: UIViewController {
         drawRuler(context: context, elements: horizontalPoints)
         drawRuler(context: context, elements: verticalPoints)
         
+        let pointX = canvas.frame.maxX / CGFloat(terrain.sizeX) * CGFloat(point.x)
+        let pointY = canvas.frame.maxY / CGFloat(terrain.sizeY) * CGFloat(point.y)
+        drawPoint(context: context, x: pointX, y: pointY)
         
         canvas.image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
@@ -93,6 +122,15 @@ class ViewController: UIViewController {
                                       withAttributes: nil)
         }
     }
-
+    
+    private func drawPoint(context: CGContext, x: CGFloat, y: CGFloat) {
+        context.setFillColor(UIColor.blue.cgColor)
+        context.setStrokeColor(UIColor.blue.cgColor)
+        context.setLineWidth(5)
+        
+        let position = CGRect(x: x, y: y, width: 10, height: 10)
+        context.addEllipse(in: position)
+        context.drawPath(using: .fillStroke)
+    }
 }
 
