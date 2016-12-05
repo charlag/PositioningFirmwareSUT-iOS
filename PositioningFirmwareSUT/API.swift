@@ -18,17 +18,17 @@ struct Terrain {
 }
 
 struct Point {
-    let x: Int
-    let y: Int
+    let x: Double
+    let y: Double
     
-    init(x: Int, y: Int) {
+    init(x: Double, y: Double) {
         self.x = x
         self.y = y
     }
     
     init(json: [String: Any]) {
-        self.init(x: json["x"] as! Int,
-                  y: json["y"] as! Int)
+        self.init(x: json["x"] as! Double,
+                  y: json["y"] as! Double)
     }
     
     func asJSON() -> [String: Any] {

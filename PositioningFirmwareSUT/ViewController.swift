@@ -15,6 +15,7 @@ class ViewController: UIViewController {
     let api: API = APIImpl()
     
     let canvas = UIImageView()
+    let coorinatesView = UILabel()
     
     let disposeBag = DisposeBag()
     
@@ -35,7 +36,19 @@ class ViewController: UIViewController {
         canvas.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
         canvas.topAnchor.constraint(equalTo: view.topAnchor, constant: 20).isActive = true
         canvas.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
-        canvas.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+        canvas.widthAnchor.constraint(equalTo: canvas.heightAnchor).isActive = true
+        
+        canvas.layer.borderWidth = 1
+        canvas.layer.borderColor = UIColor.lightGray.cgColor
+        
+        coorinatesView.font = UIFont.systemFont(ofSize: 20)
+        coorinatesView.textAlignment = .center
+        view.addSubview(coorinatesView)
+        coorinatesView.translatesAutoresizingMaskIntoConstraints = false
+        coorinatesView.topAnchor.constraint(equalTo: canvas.bottomAnchor, constant: 20).isActive = true
+        coorinatesView.leftAnchor.constraint(equalTo: view.leftAnchor, constant: 20).isActive = true
+        coorinatesView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -20).isActive = true
+        coorinatesView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20).isActive = true
         
         let gestureRecognizer = UITapGestureRecognizer(target: nil, action: nil)
         canvas.addGestureRecognizer(gestureRecognizer)
@@ -48,6 +61,7 @@ class ViewController: UIViewController {
             .withLatestFrom(terrain) { ($0, $1) }
             .subscribe(onNext: { (point, terrain) in
                 self.drawCanvas(terrain: terrain, point: point)
+                self.coorinatesView.text = "x: \(point.x), y: \(point.y)"
             })
             .addDisposableTo(disposeBag)
         
@@ -55,11 +69,12 @@ class ViewController: UIViewController {
             .withLatestFrom(terrain) { ($0, $1) }
             .flatMap { (recongnizer, terrain) -> Observable<Void> in
                 let location = recongnizer.location(in: self.canvas)
-                let x = round(self.canvas.frame.maxX / location.x)
-                let y = round(self.canvas.frame.maxY / location.y)
+                let x = location.x / self.canvas.frame.maxX * CGFloat(terrain.sizeX)
+                let y = location.y / self.canvas.frame.maxY * CGFloat(terrain.sizeY)
+//                let y = round(self.canvas.frame.maxY / location.y)
                 print("Sending to: \(x) \(y)")
-                return self.api.postLocation(point: Point(x: Int(x),
-                                                          y: Int(y)))
+                return self.api.postLocation(point: Point(x: Double(x),
+                                                          y: Double(y)))
             }
             .subscribe()
             .addDisposableTo(disposeBag)
@@ -83,7 +98,7 @@ class ViewController: UIViewController {
         }
         
         let verticalStep = canvas.frame.maxY / CGFloat(terrain.sizeY)
-        let yIndicies = 1..<terrain.sizeY
+        let yIndicies = 1...terrain.sizeY
         let verticalPoints = yIndicies.map { i -> RulerPoint in
             let y = CGFloat(i) * verticalStep
             let lineStart = CGPoint(x: 0, y: y)
