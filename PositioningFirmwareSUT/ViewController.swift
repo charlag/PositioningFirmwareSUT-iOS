@@ -12,14 +12,25 @@ import RxCocoa
 
 class ViewController: UIViewController {
     
-    let api: API = APIImpl()
+    let baseURL = Variable<String>("http://192.168.0.1")
+    
+    let api: Observable<API>
+    let terrain: Observable<Terrain>
     
     let canvas = UIImageView()
     let coorinatesView = UILabel()
+    let changeAddressButton = UIButton()
     
     let disposeBag = DisposeBag()
     
     init() {
+        api = baseURL.asObservable().map { url -> API in
+            return APIImpl(baseURL: url)
+        }
+        
+        terrain = api.asObservable().flatMapLatest { api in
+            api.getTerrain().catchErrorJustReturn(Terrain(sizeX: 1, sizeY: 1))
+        }
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -48,17 +59,32 @@ class ViewController: UIViewController {
         coorinatesView.topAnchor.constraint(equalTo: canvas.bottomAnchor, constant: 20).isActive = true
         coorinatesView.leftAnchor.constraint(equalTo: view.leftAnchor, constant: 20).isActive = true
         coorinatesView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -20).isActive = true
-        coorinatesView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20).isActive = true
         
+        view.addSubview(changeAddressButton)
+        changeAddressButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        changeAddressButton.topAnchor.constraint(equalTo: coorinatesView.bottomAnchor).isActive = true
+        changeAddressButton.centerXAnchor.constraint(equalTo: view.centerXAnchor).isActive = true
+        changeAddressButton.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+        
+        baseURL.asObservable().bindTo(changeAddressButton.rx.title(for: .normal)).addDisposableTo(disposeBag)
+        changeAddressButton.setTitleColor(UIColor.blue, for: .normal)
+
+        changeAddressButton.rx.tap.subscribe(onNext: {
+            self.openChangeAddressAlert()
+        })
+        .addDisposableTo(disposeBag)
+    
         let gestureRecognizer = UITapGestureRecognizer(target: nil, action: nil)
         canvas.addGestureRecognizer(gestureRecognizer)
         canvas.isUserInteractionEnabled = true
-        
-        let terrain = api.getTerrain().shareReplayLatestWhileConnected()
+
         
         Observable<Int>.interval(1.0, scheduler: MainScheduler.instance)
-            .flatMap { _ in self.api.getLocation() }
+            .withLatestFrom(api.asObservable())
+            .flatMapLatest { api in api.getLocation().catchErrorJustReturn(Point(x: 0, y: 0)) }
             .withLatestFrom(terrain) { ($0, $1) }
+            .debug()
             .subscribe(onNext: { (point, terrain) in
                 self.drawCanvas(terrain: terrain, point: point)
                 self.coorinatesView.text = "x: \(point.x), y: \(point.y)"
@@ -67,15 +93,17 @@ class ViewController: UIViewController {
         
         gestureRecognizer.rx.event
             .withLatestFrom(terrain) { ($0, $1) }
-            .flatMap { (recongnizer, terrain) -> Observable<Void> in
+            .withLatestFrom(api.asObservable()) { ($0.0, $0.1, $1) }
+            .flatMap { (recongnizer, terrain, api) -> Observable<Void> in
                 let location = recongnizer.location(in: self.canvas)
                 let x = location.x / self.canvas.frame.maxX * CGFloat(terrain.sizeX)
                 let y = location.y / self.canvas.frame.maxY * CGFloat(terrain.sizeY)
-//                let y = round(self.canvas.frame.maxY / location.y)
                 print("Sending to: \(x) \(y)")
-                return self.api.postLocation(point: Point(x: Double(x),
+                return api.postLocation(point: Point(x: Double(x),
                                                           y: Double(y)))
+                    .catchErrorJustReturn(())
             }
+            .debug()
             .subscribe()
             .addDisposableTo(disposeBag)
     }
@@ -146,6 +174,21 @@ class ViewController: UIViewController {
         let position = CGRect(x: x, y: y, width: 10, height: 10)
         context.addEllipse(in: position)
         context.drawPath(using: .fillStroke)
+    }
+    
+    private func openChangeAddressAlert() {
+        let alert = UIAlertController(title: "Change Address", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Base URL"
+            field.clearButtonMode = .whileEditing
+            field.textColor = .blue
+            field.text = self.baseURL.value
+        }
+        alert.addAction(UIAlertAction(title: "Change", style: .default) { _ in
+            let field = alert.textFields?.first!
+            self.baseURL.value = field?.text ?? ""
+        })
+        present(alert, animated: true, completion: nil)
     }
 }
 

@@ -49,11 +49,12 @@ enum APIError: Error {
 
 struct APIImpl: API {
     
-    let baseURL = "http://78.155.217.162:5858"
+    let baseURL: String
     let terrainPath: String
     let locationPath: String
     
-    init() {
+    init(baseURL: String) {
+        self.baseURL = baseURL
         terrainPath = baseURL + "/terrain"
         locationPath = baseURL + "/point"
     }
